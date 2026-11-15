@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" width="400" height="240">
+  <defs>
+    <linearGradient id="ebg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#ebg)"/>
+  <!-- Digital Thermometer & BP Meter -->
+  <g transform="translate(90, 40)">
+    <!-- Thermometer -->
+    <g transform="rotate(35 80 80)">
+      <rect x="20" y="35" width="130" height="24" rx="8" fill="#ffffff" stroke="#0284c7" stroke-width="3" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.1))"/>
+      <rect x="140" y="41" width="28" height="12" rx="2" fill="#94a3b8"/>
+      <!-- Digital Display -->
+      <rect x="45" y="40" width="48" height="14" rx="2" fill="#e0f2fe"/>
+      <text x="50" y="51" font-family="monospace" font-size="9" font-weight="bold" fill="#0369a1">98.6°F</text>
+      <!-- Power button -->
+      <circle cx="105" cy="47" r="4" fill="#38bdf8"/>
+    </g>
+    <!-- Oximeter / Monitor Box -->
+    <rect x="130" y="50" width="85" height="65" rx="10" fill="#0f172a" stroke="#334155" stroke-width="3" filter="drop-shadow(0 6px 12px rgba(0,0,0,0.18))"/>
+    <rect x="140" y="60" width="65" height="35" rx="4" fill="#1e293b"/>
+    <text x="148" y="78" font-family="sans-serif" font-size="14" font-weight="bold" fill="#22c55e">99%</text>
+    <text x="148" y="90" font-family="sans-serif" font-size="9" fill="#38bdf8">PR 72</text>
+  </g>
+</svg>

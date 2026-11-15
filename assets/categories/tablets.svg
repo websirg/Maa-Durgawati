@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" width="400" height="240">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ecfdf5"/>
+      <stop offset="100%" stop-color="#d1fae5"/>
+    </linearGradient>
+    <linearGradient id="pill1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="pill2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#bg)"/>
+  <!-- Blister Pack Frame -->
+  <rect x="50" y="40" width="300" height="160" rx="16" fill="#ffffff" stroke="#a7f3d0" stroke-width="2" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.05))"/>
+  <!-- Capsules inside -->
+  <g transform="translate(80, 65)">
+    <rect x="0" y="0" width="35" height="50" rx="17.5" fill="url(#pill1)"/>
+    <rect x="0" y="25" width="35" height="25" rx="0 0 17.5 17.5" fill="#fbbf24"/>
+    <rect x="60" y="0" width="35" height="50" rx="17.5" fill="url(#pill2)"/>
+    <rect x="60" y="25" width="35" height="25" rx="0 0 17.5 17.5" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="120" y="0" width="35" height="50" rx="17.5" fill="url(#pill1)"/>
+    <rect x="120" y="25" width="35" height="25" rx="0 0 17.5 17.5" fill="#f87171"/>
+    <rect x="180" y="0" width="35" height="50" rx="17.5" fill="url(#pill2)"/>
+    <rect x="180" y="25" width="35" height="25" rx="0 0 17.5 17.5" fill="#a7f3d0"/>
+    
+    <circle cx="17.5" cy="80" r="16" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2"/>
+    <line x1="5" y1="80" x2="30" y2="80" stroke="#94a3b8" stroke-width="2"/>
+    
+    <circle cx="77.5" cy="80" r="16" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2"/>
+    <line x1="65" y1="80" x2="90" y2="80" stroke="#94a3b8" stroke-width="2"/>
+    
+    <circle cx="137.5" cy="80" r="16" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2"/>
+    <line x1="125" y1="80" x2="150" y2="80" stroke="#94a3b8" stroke-width="2"/>
+    
+    <circle cx="197.5" cy="80" r="16" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2"/>
+    <line x1="185" y1="80" x2="210" y2="80" stroke="#94a3b8" stroke-width="2"/>
+  </g>
+</svg>

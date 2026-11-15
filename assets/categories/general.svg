@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" width="400" height="240">
+  <defs>
+    <linearGradient id="gbg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f0fdf4"/>
+      <stop offset="100%" stop-color="#dcfce7"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#gbg)"/>
+  <!-- Central Medical Shield -->
+  <g transform="translate(140, 35)">
+    <path d="M60 10 C100 10 115 35 115 70 C115 125 60 155 60 155 C60 155 5 125 5 70 C5 35 20 10 60 10 Z" fill="#ffffff" stroke="#10b981" stroke-width="4" filter="drop-shadow(0 6px 12px rgba(16,185,129,0.2))"/>
+    <!-- Red/Green Cross -->
+    <path d="M48 50 h24 v14 h14 v24 h-14 v24 h-24 v-24 h-14 v-24 h14 z" fill="#059669"/>
+    <!-- Pulse Line -->
+    <path d="M15 77 h25 l5 -12 l8 24 l6 -14 h20 l5 -8 l6 16 l5 -8 h15" fill="none" stroke="#0284c7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
