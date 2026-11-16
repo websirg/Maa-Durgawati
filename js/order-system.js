@@ -15,7 +15,7 @@
   // 1. Core Shop Coordinates & Business Constants
   const SHOP_CONFIG = {
     name: 'माँ दुर्गावती मेडिकल एंड क्लिनिक',
-    pharmacist: 'Drx Prashant Kumar Kushwaha',
+    pharmacist: 'Drx. प्रशांत कुमार कुशवाहा (फार्मेसी प्रोफेशनल | Pharmacy Professional)',
     phone: '916393303352',
     lat: 25.6871785,
     lng: 83.0952048,
@@ -468,17 +468,17 @@
   // 8. DELIVERY CHARGE CALCULATION RULES (Strict Business Logic)
   // =========================================================================
   /**
-   * Rule A - Free Delivery:
-   *   distance <= 1.0 km AND cartTotal > 150
+   * Rule A - 1 KM तक FREE Delivery:
+   *   distance <= 1.0 km AND cartTotal >= 150
    *   charge = 0 ("आपकी डिलीवरी बिल्कुल FREE है!")
    *
-   * Rule B - ₹50 Delivery Charge:
-   *   distance > 1.0 km (regardless of cart total)
-   *   charge = 50 ("₹50 Home Delivery Charge लागू होगा।")
+   * Rule B - 1 KM तक ₹150 से कम ऑर्डर:
+   *   distance <= 1.0 km AND cartTotal < 150
+   *   charge = 50 ("₹150 से कम के ऑर्डर पर 1 KM तक ₹50 delivery charge लागू होगा।")
    *
-   * Rule C - 1 km or less AND cartTotal <= 150:
-   *   distance <= 1.0 km AND cartTotal <= 150
-   *   charge = 'दुकान से confirm होगा' (Do NOT invent amounts!)
+   * Rule C - 1 KM से अधिक दूरी:
+   *   distance > 1.0 km (regardless of cart total)
+   *   charge = 50 ("1 KM से अधिक दूरी पर ₹50 delivery charge लागू होगा।")
    */
   function calculateDelivery(distanceKm, cartTotal) {
     if (distanceKm === null || isNaN(distanceKm) || distanceKm <= 0) {
@@ -492,21 +492,21 @@
     }
 
     if (distanceKm <= 1.0) {
-      if (cartTotal > 150) {
+      if (cartTotal >= 150) {
         return {
           status: 'FREE',
           chargeAmount: 0,
           displayText: 'FREE (₹0)',
           badgeClass: 'free',
-          message: '🎉 आपकी डिलीवरी बिल्कुल FREE है! (1 km के भीतर और ₹150 से अधिक ऑर्डर)'
+          message: '🎉 आपकी डिलीवरी बिल्कुल FREE है! (1 KM तक और ₹150 या उससे अधिक का ऑर्डर)'
         };
       } else {
         return {
-          status: 'CONFIRM',
-          chargeAmount: null,
-          displayText: 'दुकान से confirm होगा',
-          badgeClass: 'confirm',
-          message: '📞 1 km के भीतर ₹150 या उससे कम के ऑर्डर पर डिलीवरी चार्ज दुकान (Drx प्रशांत जी) द्वारा कन्फर्म किया जाएगा।'
+          status: 'PAID',
+          chargeAmount: 50,
+          displayText: '₹50',
+          badgeClass: 'paid',
+          message: '🚚 ₹50 Home Delivery Charge लागू होगा। (1 KM तक ₹150 से कम का ऑर्डर)'
         };
       }
     } else {
@@ -515,7 +515,7 @@
         chargeAmount: 50,
         displayText: '₹50',
         badgeClass: 'paid',
-        message: '🚚 ₹50 Home Delivery Charge लागू होगा। (1 km से अधिक सड़क दूरी)'
+        message: '🚚 ₹50 Home Delivery Charge लागू होगा। (1 KM से अधिक सड़क दूरी, ऑर्डर मूल्य चाहे जो हो)'
       };
     }
   }
@@ -624,7 +624,7 @@
       const deliveryResult = calculateDelivery(calculatedDistanceKm, cartTotal);
 
       // Build structured, professional WhatsApp Message
-      let waMessage = `*नमस्ते Drx प्रशांत जी (माँ दुर्गावती मेडिकल एंड क्लिनिक)*,\n\n`;
+      let waMessage = `*नमस्ते Drx. प्रशांत कुमार कुशवाहा जी (माँ दुर्गावती मेडिकल एंड क्लिनिक)*,\n\n`;
       waMessage += `मुझे होम डिलीवरी के लिए दवाई ऑर्डर करनी है:\n\n`;
       waMessage += `👤 *ग्राहक का नाम:* ${name}\n`;
       waMessage += `📱 *मोबाइल नंबर:* ${phone}\n`;
@@ -661,10 +661,10 @@
         const grandTotal = cartTotal + deliveryResult.chargeAmount;
         waMessage += `• *कुल अनुमानित राशि:* ₹${grandTotal.toFixed(0)}\n`;
       } else {
-        waMessage += `• *कुल अनुमानित राशि:* ₹${cartTotal.toFixed(0)} + डिलीवरी चार्ज (पुष्टि अनुसार)\n`;
+        waMessage += `• *कुल अनुमानित राशि:* ₹${cartTotal.toFixed(0)} + डिलीवरी चार्ज\n`;
       }
 
-      waMessage += `\n🛵 *पर्सनल डिलीवरी:* Drx प्रशांत जी द्वारा स्वयं सुविधा।\n`;
+      waMessage += `\n🛵 *पर्सनल होम डिलीवरी:* Maa Durgawati Medical की टीम आपके ऑर्डर पर दवाइयाँ सीधे आपके घर तक पहुँचाती है।\n`;
       waMessage += `कृपया दवाइयों की उपलब्धता एवं डिलीवरी समय कन्फर्म करें। धन्यवाद!`;
 
       // Redirect to WhatsApp safely
