@@ -202,11 +202,19 @@
               </div>
             </div>
 
-            <!-- Step 3: Prescription Upload -->
+            <!-- Step 3: Prescription Upload (Optional) -->
             <div class="form-step-section">
               <div class="form-step-header">
                 <div class="form-step-number">3</div>
-                <h3>डॉक्टर का पर्चा अपलोड करें (Prescription Upload)</h3>
+                <h3>डॉक्टर का पर्चा (Optional)</h3>
+              </div>
+
+              <!-- Helpful Prescription Note -->
+              <div style="background: #f0fdf4; border: 1.5px solid #a7f3d0; border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px;">
+                <i class="fa-solid fa-circle-info" style="color: #059669; margin-top: 3px;"></i>
+                <div style="font-size: 0.88rem; color: #065f46; line-height: 1.5;">
+                  <strong>नोट:</strong> यदि डॉक्टर का पर्चा उपलब्ध है, तो आप उसकी फोटो अपलोड कर सकते हैं। <strong>यह वैकल्पिक है।</strong> आप बाद में WhatsApp पर भी पर्चा भेज सकते हैं।
+                </div>
               </div>
 
               <div class="prescription-upload-box">
@@ -214,9 +222,9 @@
                 <div class="upload-icon-circle">
                   <i class="fa-solid fa-file-arrow-up"></i>
                 </div>
-                <h4 style="font-size: 1.05rem; color: var(--primary-dark); margin-bottom: 4px;">डॉक्टर के पर्चे की फोटो या PDF यहाँ चुनें</h4>
+                <h4 style="font-size: 1.05rem; color: var(--primary-dark); margin-bottom: 4px;">डॉक्टर के पर्चे की फोटो या PDF यहाँ चुनें (Optional)</h4>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0;">
-                  मोबाइल कैमरा या गैलरी से साफ फोटो चुनें (JPG, PNG या PDF)
+                  मोबाइल कैमरा या गैलरी से फोटो चुनें (वैकल्पिक - बाद में WhatsApp पर भी भेज सकते हैं)
                 </p>
               </div>
 
@@ -232,14 +240,6 @@
                   <i class="fa-solid fa-xmark"></i>
                 </button>
               </div>
-
-              <!-- Legal Requirement Callout -->
-              <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 14px; display: flex; align-items: flex-start; gap: 10px;">
-                <i class="fa-solid fa-shield-halved" style="color: #d97706; margin-top: 3px;"></i>
-                <div style="font-size: 0.84rem; color: #92400e; line-height: 1.5;">
-                  <strong>विधिक अनिवार्यता (Statutory Rule):</strong> शेड्यूल H व H1 की नियंत्रित दवाइयों के लिए वैध डॉक्टर का पर्चा आवश्यक है। बिना वैध पर्चे के प्रतिबंधित दवाइयों की बिक्री या होम डिलीवरी नहीं की जाएगी।
-                </div>
-              </div>
             </div>
 
             <!-- Step 4: Delivery Location & Google Maps -->
@@ -249,9 +249,10 @@
                 <h3>डिलीवरी का पता एवं गूगल मैप्स लोकेशन (Delivery Location)</h3>
               </div>
 
-              <div class="form-group">
+              <div class="form-group" style="position: relative;">
                 <label for="deliveryAddress" class="form-label">डिलीवरी का पूरा पता (Village / Mohalla / Landmark) <span>*</span></label>
-                <input type="text" id="deliveryAddress" class="form-control" placeholder="उदा. इटैली मोड़ / मेहनाजपुर बाजार / मकान नं. या मुख्य लैंडमार्क" value="इटैली मोड़, मेहनाजपुर">
+                <input type="text" id="deliveryAddress" class="form-control" placeholder="पता या गाँव का नाम टाइप करें और Google Maps सुझाव चुनें..." autocomplete="off">
+                <div id="locationVerificationBadge" class="location-verification-badge"></div>
               </div>
 
               <!-- Map Container with GPS & Quick Locs -->
@@ -492,6 +493,9 @@
   </a>
 
   <!-- Scripts -->
+  <script>
+    window.GOOGLE_MAPS_API_KEY = window.GOOGLE_MAPS_API_KEY || localStorage.getItem('GOOGLE_MAPS_API_KEY') || '';
+  </script>
   <script src="js/main.js"></script>
   <script src="js/order-system.js"></script>
 </body>

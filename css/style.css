@@ -55,7 +55,7 @@
   --radius-lg: 22px;
   --radius-full: 9999px;
   
-  --header-height: 64px;
+  --header-height: 70px;
   --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -282,19 +282,19 @@ button, input, textarea, select {
 .brand-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-shrink: 0;
   text-decoration: none;
 }
 
 .official-logo-img {
-  height: 44px;
-  width: 44px;
+  height: 48px;
+  width: 48px;
   border-radius: 50%;
   object-fit: contain;
   background-color: #ffffff;
   padding: 2px;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
   border: 2px solid #10b981;
   flex-shrink: 0;
   transition: var(--transition);
@@ -302,7 +302,7 @@ button, input, textarea, select {
 
 .brand-logo:hover .official-logo-img {
   transform: scale(1.05);
-  box-shadow: 0 4px 10px rgba(5, 150, 105, 0.25);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
 }
 
 .brand-text-block {
@@ -313,17 +313,17 @@ button, input, textarea, select {
 
 .brand-title-hi {
   font-family: var(--font-heading);
-  font-size: 1.08rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--primary-dark);
-  line-height: 1.35;
+  line-height: 1.25;
   letter-spacing: -0.2px;
   display: block;
 }
 
 .brand-title-en {
   font-family: var(--font-heading);
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: var(--secondary-color);
   letter-spacing: 0.5px;
@@ -496,7 +496,7 @@ button, input, textarea, select {
 
 @media (max-width: 600px) {
   :root {
-    --header-height: 64px;
+    --header-height: 70px;
   }
   .site-header {
     padding: 2px 0;
@@ -2873,6 +2873,88 @@ textarea.form-control {
 
 .prescription-preview-area.active {
   display: flex;
+}
+
+/* Google Places Autocomplete dropdown z-index & styling fix */
+.pac-container {
+  z-index: 999999 !important;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  font-family: var(--font-body);
+  border: 1.5px solid #cbd5e1;
+  margin-top: 4px;
+  background-color: #ffffff !important;
+  pointer-events: auto !important;
+}
+
+.pac-item {
+  padding: 10px 14px;
+  font-size: 0.92rem;
+  cursor: pointer;
+  border-top: 1px solid #f1f5f9;
+  line-height: 1.4;
+  color: var(--text-main);
+}
+
+.pac-item:hover, .pac-item-selected {
+  background-color: #ecfdf5 !important;
+}
+
+.pac-item-query {
+  font-size: 0.94rem;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.pac-matched {
+  font-weight: 800;
+  color: #059669;
+}
+
+.pac-icon {
+  margin-top: 3px;
+}
+
+/* Location Verification Indicator */
+.location-verification-badge {
+  display: none;
+  margin-top: 8px;
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition);
+}
+
+.location-verification-badge.verified {
+  display: flex;
+  background-color: #ecfdf5;
+  border: 1.5px solid #a7f3d0;
+  color: #065f46;
+}
+
+.location-verification-badge.manual {
+  display: flex;
+  background-color: #f1f5f9;
+  border: 1.5px solid #cbd5e1;
+  color: #475569;
+}
+
+.location-verification-badge.warning {
+  display: flex;
+  background-color: #fffbeb;
+  border: 1.5px solid #fde68a;
+  color: #92400e;
+}
+
+.location-badge-link {
+  color: #0284c7;
+  font-weight: 700;
+  text-decoration: underline;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 /* Map Picker Container */

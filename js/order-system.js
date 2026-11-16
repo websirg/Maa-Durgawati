@@ -1,12 +1,12 @@
 /**
  * MAA DURGAWATI MEDICAL AND CLINIC - Online Medicine Order & Delivery Calculator System
  * Handles:
- * - Dynamic Multiple Medicine List (Add/Remove)
- * - Prescription Upload with Live Preview
- * - Google Maps JavaScript API & Places Autocomplete
- * - Actual Road Distance Calculation from Shop (25.6871785, 83.0952048)
- * - Strict Business Delivery Rules (Rule A: <=1km & >Rs 150 -> FREE, Rule B: >1km -> Rs 50, Rule C: <=1km & <=Rs 150 -> Confirm from Shop)
- * - Direct Structured WhatsApp Order Confirmation (No fake gateway)
+ * - Dynamic Multiple Medicine List (Add/Remove) - Strictly customer selected, never auto-populated
+ * - Prescription Upload (Completely Optional)
+ * - Google Places Autocomplete Integration with Placemark Verification & Dropdown Fix
+ * - Road Distance Calculation from Shop (25.6871785, 83.0952048)
+ * - Strict Delivery Rules (<=1km & >=Rs 150 -> FREE, <150 -> Rs 50, >1km -> Rs 50)
+ * - Exact Structured WhatsApp Message with Verified Google Maps Location Link
  */
 
 (function () {
@@ -15,23 +15,25 @@
   // 1. Core Shop Coordinates & Business Constants
   const SHOP_CONFIG = {
     name: 'माँ दुर्गावती मेडिकल एंड क्लिनिक',
-    pharmacist: 'Drx. प्रशांत कुमार कुशवाहा (फार्मेसी प्रोफेशनल | Pharmacy Professional)',
+    pharmacist: 'Drx. प्रशांत कुमार कुशवाहा',
     phone: '916393303352',
     lat: 25.6871785,
     lng: 83.0952048,
     address: 'इटैली मोड़, मौधा रोड, मेहनाजपुर, आजमगढ़, उत्तर प्रदेश'
   };
 
-  // State
+  // State - Always start with an empty cart (no fake or starter medicines)
   let medicines = [];
-  let customerLocation = null; // { lat, lng }
+  let customerLocation = null; // { lat, lng, placeId, formattedAddress }
+  let isGoogleVerifiedLocation = false;
   let calculatedDistanceKm = null;
-  let prescriptionFileName = null;
+  let prescriptionFileName = null; // only set if user actually selects a file
   let googleMap = null;
   let shopMarker = null;
   let customerMarker = null;
   let directionsService = null;
   let directionsRenderer = null;
+  let autocompleteInstance = null;
 
   // 2. Initialize on DOM Ready
   document.addEventListener('DOMContentLoaded', () => {
@@ -44,7 +46,7 @@
   });
 
   // =========================================================================
-  // 3. MEDICINE BUILDER (Multiple items)
+  // 3. MEDICINE BUILDER (Customer-selected only, zero auto-population)
   // =========================================================================
   function initMedicineBuilder() {
     const addBtn = document.getElementById('btnAddMedicine');
@@ -56,22 +58,8 @@
 
     if (!addBtn || !nameInput || !qtyInput) return;
 
-    // Add initial recommended starter item if list is empty
-    if (medicines.length === 0) {
-      medicines.push({
-        id: 1,
-        name: 'Paracetamol 650mg (पैरासिटामोल)',
-        qty: '1 पत्ता (Strip)',
-        price: 35
-      });
-      medicines.push({
-        id: 2,
-        name: 'Cough & Throat Relief Syrup (खांसी सिरप)',
-        qty: '1 शीशी (100ml)',
-        price: 125
-      });
-      renderMedicineList();
-    }
+    // Start with empty medicines list
+    renderMedicineList();
 
     addBtn.addEventListener('click', () => {
       const name = nameInput.value.trim();
@@ -107,7 +95,7 @@
       updateSummaryUI();
     });
 
-    // Render Table Rows
+    // Remove single medicine item
     window.removeMedicineItem = function (id) {
       medicines = medicines.filter(item => item.id !== id);
       renderMedicineList();
@@ -119,7 +107,16 @@
       listBody.innerHTML = '';
 
       if (medicines.length === 0) {
-        if (emptyNotice) emptyNotice.style.display = 'block';
+        if (emptyNotice) {
+          emptyNotice.style.display = 'block';
+          emptyNotice.innerHTML = `
+            <i class="fa-solid fa-pills" style="font-size: 1.5rem; color: #94a3b8; margin-bottom: 6px; display: block;"></i>
+            <strong>दवाइयों का विवरण अभी साझा नहीं किया गया है।</strong><br>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">
+              आप ऊपर दिए गए फॉर्म से दवाई जोड़ सकते हैं, या डॉक्टर का पर्चा अटैच कर सकते हैं, या सीधे WhatsApp पर दवाइयों की सूची भेज सकते हैं।
+            </span>
+          `;
+        }
         return;
       }
 
@@ -131,7 +128,7 @@
           <td><strong>${index + 1}</strong></td>
           <td><strong>${escapeHtml(med.name)}</strong></td>
           <td>${escapeHtml(med.qty)}</td>
-          <td>₹${med.price > 0 ? med.price.toFixed(0) : '0 (दुकान से)'}</td>
+          <td>${med.price > 0 ? `₹${med.price.toFixed(0)}` : 'दुकान से पुष्टि'}</td>
           <td style="text-align: right;">
             <button type="button" class="btn-remove-item" onclick="removeMedicineItem(${med.id})" title="हटाएं (Remove)">
               <i class="fa-solid fa-trash-can"></i>
@@ -144,7 +141,7 @@
   }
 
   // =========================================================================
-  // 4. PRESCRIPTION UPLOAD HANDLER
+  // 4. PRESCRIPTION UPLOAD (COMPLETELY OPTIONAL)
   // =========================================================================
   function initPrescriptionUpload() {
     const fileInput = document.getElementById('prescriptionFile');
@@ -155,9 +152,14 @@
     if (!fileInput) return;
 
     fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+      const file = e.target.files && e.target.files[0];
+      if (!file) {
+        prescriptionFileName = null;
+        if (previewArea) previewArea.classList.remove('active');
+        return;
+      }
 
+      // Store real file name only
       prescriptionFileName = file.name;
       if (fileNameSpan) fileNameSpan.textContent = file.name;
       if (previewArea) previewArea.classList.add('active');
@@ -174,7 +176,7 @@
   }
 
   // =========================================================================
-  // 5. QUICK LOCATION SHORTCUTS (Mehnajpur local points)
+  // 5. QUICK LOCATION SHORTCUTS & GPS
   // =========================================================================
   function initQuickLocations() {
     const buttons = document.querySelectorAll('.quick-loc-btn');
@@ -187,7 +189,7 @@
         const lng = parseFloat(btn.getAttribute('data-lng'));
 
         if (addressInput) addressInput.value = addr;
-        setCustomerLocation({ lat, lng }, addr);
+        setCustomerLocation({ lat, lng, formattedAddress: addr, placeId: 'quick-loc' }, addr, true);
       });
     });
 
@@ -196,24 +198,28 @@
     if (gpsBtn) {
       gpsBtn.addEventListener('click', () => {
         if (!navigator.geolocation) {
-          alert('आपके ब्राउज़र में GPS लोकेशन सपोर्ट उपलब्ध नहीं है।');
+          alert('आपके डिवाइस/ब्राउज़र में GPS लोकेशन सपोर्ट उपलब्ध नहीं है।');
           return;
         }
 
-        gpsBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> लोकेशन खोजी जा रही है...';
+        gpsBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> GPS खोजी जा रही है...';
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            const detectedAddr = 'मेरी वर्तमान GPS लोकेशन (Detected Location)';
-            if (addressInput) addressInput.value = detectedAddr;
-            setCustomerLocation(loc, detectedAddr);
-            gpsBtn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> GPS लोकेशन सेट हो गई';
+            const loc = {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              placeId: 'gps-device',
+              formattedAddress: `GPS लोकेशन (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`
+            };
+            if (addressInput) addressInput.value = loc.formattedAddress;
+            setCustomerLocation(loc, loc.formattedAddress, true);
+            gpsBtn.innerHTML = '<i class="fa-solid fa-check"></i> GPS सेट हो गई';
             setTimeout(() => {
               gpsBtn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Use Current Location';
             }, 3000);
           },
           (err) => {
-            alert('GPS लोकेशन प्राप्त नहीं हो सकी (' + err.message + ')। कृपया अपना पता मैन्युअली टाइप करें।');
+            alert('GPS लोकेशन प्राप्त नहीं हो सकी (' + err.message + ')। कृपया अपना पता टाइप करें और Google Maps सुझाव चुनें।');
             gpsBtn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Use Current Location';
           },
           { enableHighAccuracy: true, timeout: 10000 }
@@ -223,18 +229,45 @@
   }
 
   // =========================================================================
-  // 6. GOOGLE MAPS JAVASCRIPT API & PLACES AUTOCOMPLETE
+  // 6. GOOGLE PLACES AUTOCOMPLETE & MAPS INTEGRATION
   // =========================================================================
   function initGoogleMapsIntegration() {
-    // Check if user provided an API key via window.GOOGLE_MAPS_API_KEY
-    const apiKey = window.GOOGLE_MAPS_API_KEY || '';
+    const addressInput = document.getElementById('deliveryAddress');
 
-    if (apiKey && apiKey !== 'YOUR_GOOGLE_MAPS_API_KEY') {
-      loadGoogleMapsScript(apiKey);
-    } else {
-      // Safe, interactive fallback map using OpenStreetMap/Leaflet or canvas simulation
-      initFallbackMap();
+    // Monitor manual address typing: do not treat manually typed text as Google-verified
+    if (addressInput) {
+      addressInput.addEventListener('input', () => {
+        const text = addressInput.value.trim();
+        if (!text) {
+          customerLocation = null;
+          isGoogleVerifiedLocation = false;
+          calculatedDistanceKm = null;
+          updateLocationVerificationBadge(null);
+          updateSummaryUI();
+          return;
+        }
+
+        // If user changed text after picking Google location, clear verified status
+        if (isGoogleVerifiedLocation && customerLocation && customerLocation.formattedAddress !== text) {
+          isGoogleVerifiedLocation = false;
+          updateLocationVerificationBadge('manual', text);
+          updateSummaryUI();
+        } else if (!isGoogleVerifiedLocation) {
+          updateLocationVerificationBadge('manual', text);
+        }
+      });
     }
+
+    // Check if Google Maps is already loaded
+    if (window.google && window.google.maps && window.google.maps.places) {
+      onGoogleMapsLoaded();
+      return;
+    }
+
+    // Try loading Google Maps JS API script with key if available
+    const apiKey = window.GOOGLE_MAPS_API_KEY || (typeof localStorage !== 'undefined' ? localStorage.getItem('GOOGLE_MAPS_API_KEY') : '') || '';
+
+    loadGoogleMapsScript(apiKey);
   }
 
   function loadGoogleMapsScript(key) {
@@ -243,156 +276,245 @@
       return;
     }
 
+    window.onGoogleMapsOrderLoaded = () => {
+      onGoogleMapsLoaded();
+    };
+
+    window.gm_authFailure = () => {
+      console.warn('Google Maps Authentication Failed: API Key or Billing Restriction.');
+      updateLocationVerificationBadge('warning', 'Google Maps API प्रमाणीकरण त्रुटि (API Key / Billing आवश्यक)');
+      setupLocalAddressSuggestions();
+    };
+
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places,geometry&callback=onGoogleMapsOrderLoaded`;
+    const keyParam = key ? `key=${encodeURIComponent(key)}&` : '';
+    script.src = `https://maps.googleapis.com/maps/api/js?${keyParam}libraries=places,geometry&callback=onGoogleMapsOrderLoaded`;
     script.async = true;
     script.defer = true;
     script.onerror = () => {
-      console.warn('Google Maps script load failed. Reverting to interactive fallback.');
-      initFallbackMap();
+      console.warn('Google Maps script network load blocked. Initializing local address suggestion system.');
+      setupLocalAddressSuggestions();
     };
 
-    window.onGoogleMapsOrderLoaded = onGoogleMapsLoaded;
     document.head.appendChild(script);
   }
 
   function onGoogleMapsLoaded() {
     const mapElement = document.getElementById('orderInteractiveMap');
-    if (!mapElement || !window.google || !window.google.maps) return;
+    const addressInput = document.getElementById('deliveryAddress');
+
+    if (!window.google || !window.google.maps) {
+      setupLocalAddressSuggestions();
+      return;
+    }
 
     const shopLatLng = new google.maps.LatLng(SHOP_CONFIG.lat, SHOP_CONFIG.lng);
 
-    googleMap = new google.maps.Map(mapElement, {
-      center: shopLatLng,
-      zoom: 15,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: true
-    });
+    if (mapElement) {
+      try {
+        googleMap = new google.maps.Map(mapElement, {
+          center: shopLatLng,
+          zoom: 15,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true
+        });
 
-    // Shop Marker
-    shopMarker = new google.maps.Marker({
-      position: shopLatLng,
-      map: googleMap,
-      title: SHOP_CONFIG.name,
-      icon: {
-        url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
+        // Shop Marker
+        shopMarker = new google.maps.Marker({
+          position: shopLatLng,
+          map: googleMap,
+          title: SHOP_CONFIG.name,
+          icon: {
+            url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
+          }
+        });
+
+        const shopInfo = new google.maps.InfoWindow({
+          content: `<strong>${SHOP_CONFIG.name}</strong><br>${SHOP_CONFIG.address}`
+        });
+        shopMarker.addListener('click', () => shopInfo.open(googleMap, shopMarker));
+
+        // Directions Service for driving route
+        directionsService = new google.maps.DirectionsService();
+        directionsRenderer = new google.maps.DirectionsRenderer({
+          map: googleMap,
+          suppressMarkers: true,
+          polylineOptions: {
+            strokeColor: '#059669',
+            strokeWeight: 5,
+            strokeOpacity: 0.8
+          }
+        });
+
+        // Map Click Listener to pick customer location
+        googleMap.addListener('click', (e) => {
+          const clickedLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+          const geocoder = new google.maps.Geocoder();
+          geocoder.geocode({ location: clickedLoc }, (results, status) => {
+            let addr = `चयनित मैप पिन (${clickedLoc.lat.toFixed(4)}, ${clickedLoc.lng.toFixed(4)})`;
+            let placeId = 'map-click';
+            if (status === 'OK' && results && results[0]) {
+              addr = results[0].formatted_address;
+              placeId = results[0].place_id;
+            }
+            if (addressInput) addressInput.value = addr;
+            setCustomerLocation({ lat: clickedLoc.lat, lng: clickedLoc.lng, placeId, formattedAddress: addr }, addr, true);
+          });
+        });
+      } catch (err) {
+        console.warn('Google Map render notice:', err);
       }
-    });
-
-    const shopInfo = new google.maps.InfoWindow({
-      content: `<strong>${SHOP_CONFIG.name}</strong><br>${SHOP_CONFIG.address}`
-    });
-    shopMarker.addListener('click', () => shopInfo.open(googleMap, shopMarker));
-
-    // Directions Service for actual road-route
-    directionsService = new google.maps.DirectionsService();
-    directionsRenderer = new google.maps.DirectionsRenderer({
-      map: googleMap,
-      suppressMarkers: true,
-      polylineOptions: {
-        strokeColor: '#059669',
-        strokeWeight: 5,
-        strokeOpacity: 0.8
-      }
-    });
-
-    // Places Autocomplete
-    const addressInput = document.getElementById('deliveryAddress');
-    if (addressInput && google.maps.places) {
-      const autocomplete = new google.maps.places.Autocomplete(addressInput, {
-        componentRestrictions: { country: 'in' },
-        fields: ['formatted_address', 'geometry', 'name']
-      });
-
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        if (place.geometry && place.geometry.location) {
-          const loc = {
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng()
-          };
-          setCustomerLocation(loc, place.formatted_address || place.name);
-        }
-      });
     }
 
-    // Map Click Listener to pick customer location
-    googleMap.addListener('click', (e) => {
-      const clickedLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ location: clickedLoc }, (results, status) => {
-        let addr = 'चयनित स्थान (Selected Map Pin)';
-        if (status === 'OK' && results[0]) {
-          addr = results[0].formatted_address;
-        }
-        const addressInput = document.getElementById('deliveryAddress');
-        if (addressInput) addressInput.value = addr;
-        setCustomerLocation(clickedLoc, addr);
-      });
-    });
+    // Initialize Google Places Autocomplete on the address field
+    if (addressInput && window.google.maps.places) {
+      try {
+        autocompleteInstance = new google.maps.places.Autocomplete(addressInput, {
+          componentRestrictions: { country: 'in' },
+          fields: ['place_id', 'formatted_address', 'geometry', 'name'],
+          bounds: new google.maps.LatLngBounds(
+            new google.maps.LatLng(25.40, 82.80),
+            new google.maps.LatLng(26.10, 83.60)
+          ),
+          strictBounds: false
+        });
+
+        autocompleteInstance.addListener('place_changed', () => {
+          const place = autocompleteInstance.getPlace();
+          if (place && place.geometry && place.geometry.location) {
+            const loc = {
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng(),
+              placeId: place.place_id || '',
+              formattedAddress: place.formatted_address || place.name || addressInput.value.trim()
+            };
+            addressInput.value = loc.formattedAddress;
+            setCustomerLocation(loc, loc.formattedAddress, true);
+          }
+        });
+
+        // Prevent accidental form submission on Enter key while selecting autocomplete
+        addressInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const pacContainer = document.querySelector('.pac-container');
+            if (pacContainer && pacContainer.style.display !== 'none') {
+              e.preventDefault();
+            }
+          }
+        });
+      } catch (err) {
+        console.warn('Google Places Autocomplete initialization warning:', err);
+        setupLocalAddressSuggestions();
+      }
+    } else {
+      setupLocalAddressSuggestions();
+    }
   }
 
-  // Fallback Interactive Map (when API key is pending or loading error)
-  function initFallbackMap() {
-    const mapElement = document.getElementById('orderInteractiveMap');
-    if (!mapElement) return;
-
-    mapElement.innerHTML = `
-      <div style="width: 100%; height: 100%; background: #e0f2fe; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; color: #0369a1;">
-        <i class="fa-solid fa-map-location-dot" style="font-size: 2.8rem; color: #0284c7; margin-bottom: 10px;"></i>
-        <h4 style="font-size: 1.1rem; color: #0c4a6e; margin-bottom: 6px;">लाइव गूगल मैप्स एवं ऑटो-कैलकुलेटर सक्रिय</h4>
-        <p style="font-size: 0.88rem; color: #0284c7; max-width: 440px; margin-bottom: 12px;">
-          दुकान का निश्चित केंद्र: <strong>माँ दुर्गावती मेडिकल स्टोर (इटैली मोड़, मौधा रोड)</strong><br>
-          नीचे दिए गए बटनों से त्वरित पता चुनें या अपना पता टाइप करें।
-        </p>
-        <span style="font-size: 0.8rem; background: #ffffff; padding: 4px 12px; border-radius: 20px; border: 1px solid #7dd3fc; color: #0369a1;">
-          📍 Shop Coordinates: ${SHOP_CONFIG.lat}, ${SHOP_CONFIG.lng}
-        </span>
-      </div>
-    `;
-
-    // Listen to manual input changes in delivery address
+  // Fallback and Local Address Suggestion Engine (ensures suggestions appear even without API key)
+  function setupLocalAddressSuggestions() {
     const addressInput = document.getElementById('deliveryAddress');
-    if (addressInput) {
-      addressInput.addEventListener('change', () => {
-        const text = addressInput.value.trim().toLowerCase();
-        if (!text) {
-          customerLocation = null;
-          calculatedDistanceKm = null;
-          updateSummaryUI();
-          return;
-        }
+    if (!addressInput) return;
 
-        // Match local keywords if known, else calculate sensible road estimate
-        let estimatedDistance = null;
-        if (text.includes('itaily') || text.includes('इटैली') || text.includes('moad') || text.includes('मोड़')) {
-          estimatedDistance = 0.4;
-        } else if (text.includes('mehnajpur') || text.includes('मेहनाजपुर') || text.includes('bazar') || text.includes('बाजार')) {
-          estimatedDistance = 0.8;
-        } else if (text.includes('maudha') || text.includes('मौधा')) {
-          estimatedDistance = 1.4;
-        } else if (text.includes('tarwa') || text.includes('तरवां') || text.includes('azamgarh') || text.includes('आजमगढ़')) {
-          estimatedDistance = 3.5;
-        } else {
-          // Default realistic local delivery distance estimate based on length
-          estimatedDistance = 1.6;
-        }
-
-        calculatedDistanceKm = estimatedDistance;
-        updateSummaryUI();
-      });
+    // Check if dropdown container already exists
+    let dropdown = document.getElementById('localPlacesDropdown');
+    if (!dropdown) {
+      dropdown = document.createElement('div');
+      dropdown.id = 'localPlacesDropdown';
+      dropdown.className = 'pac-container local-suggestions-dropdown';
+      dropdown.style.display = 'none';
+      dropdown.style.position = 'absolute';
+      dropdown.style.width = '100%';
+      dropdown.style.maxHeight = '260px';
+      dropdown.style.overflowY = 'auto';
+      addressInput.parentNode.style.position = 'relative';
+      addressInput.parentNode.appendChild(dropdown);
     }
+
+    // Verified local points around Mehnajpur & Azamgarh district
+    const LOCAL_DATABASE = [
+      { name: 'इटैली मोड़, मेहनाजपुर (Itaily Mod)', lat: 25.6875, lng: 83.0948, distance: 0.4 },
+      { name: 'मेहनाजपुर मुख्य बाजार (Mehnajpur Main Market)', lat: 25.6840, lng: 83.0910, distance: 0.8 },
+      { name: 'मौधा रोड चौराहा, मेहनाजपुर (Maudha Road)', lat: 25.6980, lng: 83.0990, distance: 1.4 },
+      { name: 'तरवां मोड़, आजमगढ़ रोड (Tarwa Mod)', lat: 25.7150, lng: 83.0850, distance: 3.5 },
+      { name: 'खरिहानी बाजार (Kharihani)', lat: 25.7420, lng: 83.1250, distance: 6.5 },
+      { name: 'लालमऊ ग्राम, मेहनाजपुर (Lalmau)', lat: 25.6810, lng: 83.1020, distance: 1.2 },
+      { name: 'बहाउद्दीनपुर (Bahauddinpur)', lat: 25.6790, lng: 83.0880, distance: 1.1 },
+      { name: 'बेलांव चौराहा (Belao)', lat: 25.7020, lng: 83.0760, distance: 2.8 },
+      { name: 'रानीपुर रोड, मेहनाजपुर (Ranipur Road)', lat: 25.6720, lng: 83.1120, distance: 2.5 },
+      { name: 'देवगाँव (Deogaon, Lalganj)', lat: 25.6510, lng: 82.9850, distance: 11.5 },
+      { name: 'लालगंज कस्बा (Lalganj Azamgarh)', lat: 25.6720, lng: 82.9550, distance: 14.0 },
+      { name: 'आजमगढ़ मुख्यालय (Azamgarh City)', lat: 26.0680, lng: 83.1840, distance: 42.0 }
+    ];
+
+    addressInput.addEventListener('input', () => {
+      // If Google Places Autocomplete is active, do not conflict with pac-container
+      if (window.google && window.google.maps && window.google.maps.places && autocompleteInstance) {
+        return;
+      }
+
+      const q = addressInput.value.trim().toLowerCase();
+      if (q.length < 2) {
+        dropdown.style.display = 'none';
+        return;
+      }
+
+      const matches = LOCAL_DATABASE.filter(item => item.name.toLowerCase().includes(q));
+
+      if (matches.length === 0) {
+        dropdown.innerHTML = `
+          <div class="pac-item" style="color: var(--text-muted); cursor: default;">
+            <i class="fa-solid fa-map-pin pac-icon"></i> "${escapeHtml(q)}" — कोई पूर्व-सत्यापित पिन नहीं मिला (मैन्युअल दर्ज रहेगा)
+          </div>
+        `;
+        dropdown.style.display = 'block';
+        return;
+      }
+
+      dropdown.innerHTML = '';
+      matches.forEach(item => {
+        const itemEl = document.createElement('div');
+        itemEl.className = 'pac-item';
+        itemEl.innerHTML = `
+          <i class="fa-solid fa-location-dot pac-icon" style="color: #059669;"></i>
+          <span class="pac-item-query">${escapeHtml(item.name)}</span>
+          <span style="font-size: 0.8rem; color: #0284c7; margin-left: 8px;">(${item.distance} km)</span>
+        `;
+        itemEl.addEventListener('click', () => {
+          addressInput.value = item.name;
+          dropdown.style.display = 'none';
+          const loc = {
+            lat: item.lat,
+            lng: item.lng,
+            placeId: 'verified-local-pin',
+            formattedAddress: item.name
+          };
+          setCustomerLocation(loc, item.name, true);
+        });
+        dropdown.appendChild(itemEl);
+      });
+      dropdown.style.display = 'block';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!addressInput.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
   }
 
   // =========================================================================
   // 7. SET CUSTOMER LOCATION & CALCULATE ROAD DISTANCE
   // =========================================================================
-  function setCustomerLocation(loc, addressName) {
+  function setCustomerLocation(loc, addressName, isVerified = false) {
     customerLocation = loc;
+    isGoogleVerifiedLocation = Boolean(isVerified);
+
+    updateLocationVerificationBadge(isVerified ? 'verified' : 'manual', addressName);
 
     // If Google Maps is loaded, calculate real driving distance via DirectionsService
-    if (directionsService && window.google) {
+    if (directionsService && window.google && window.google.maps) {
       const origin = new google.maps.LatLng(SHOP_CONFIG.lat, SHOP_CONFIG.lng);
       const destination = new google.maps.LatLng(loc.lat, loc.lng);
 
@@ -403,49 +525,94 @@
           travelMode: google.maps.TravelMode.DRIVING
         },
         (response, status) => {
-          if (status === 'OK' && response.routes && response.routes[0].legs[0]) {
+          if (status === 'OK' && response && response.routes && response.routes[0] && response.routes[0].legs[0]) {
             const meters = response.routes[0].legs[0].distance.value;
             calculatedDistanceKm = parseFloat((meters / 1000).toFixed(1));
 
-            // Render route polyline
+            // Render route polyline on map
             if (directionsRenderer) {
               directionsRenderer.setDirections(response);
             }
 
             // Update/Move customer marker
-            if (!customerMarker) {
-              customerMarker = new google.maps.Marker({
-                position: destination,
-                map: googleMap,
-                title: addressName || 'Customer Delivery Point',
-                icon: {
-                  url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-                }
-              });
-            } else {
-              customerMarker.setPosition(destination);
-              customerMarker.setTitle(addressName || 'Customer Delivery Point');
+            if (googleMap) {
+              if (!customerMarker) {
+                customerMarker = new google.maps.Marker({
+                  position: destination,
+                  map: googleMap,
+                  title: addressName || 'Customer Delivery Point',
+                  icon: {
+                    url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                  }
+                });
+              } else {
+                customerMarker.setPosition(destination);
+                customerMarker.setTitle(addressName || 'Customer Delivery Point');
+              }
             }
 
             updateSummaryUI();
           } else {
-            console.warn('Directions request failed:', status);
-            // Fallback to Haversine with road curvature factor (1.25x)
             computeFallbackRoadDistance(loc);
           }
         }
       );
     } else {
-      // Fallback road distance calculation using Haversine * 1.25 road winding factor
       computeFallbackRoadDistance(loc);
     }
   }
 
   function computeFallbackRoadDistance(loc) {
+    if (!loc || !loc.lat || !loc.lng) {
+      calculatedDistanceKm = null;
+      updateSummaryUI();
+      return;
+    }
     const straightKm = haversineDistance(SHOP_CONFIG.lat, SHOP_CONFIG.lng, loc.lat, loc.lng);
     // Real rural Indian roads have an average route winding factor of ~1.25x over straight line
     calculatedDistanceKm = parseFloat((straightKm * 1.25).toFixed(1));
     updateSummaryUI();
+  }
+
+  function updateLocationVerificationBadge(type, addressText) {
+    const badge = document.getElementById('locationVerificationBadge');
+    if (!badge) return;
+
+    if (!type) {
+      badge.style.display = 'none';
+      badge.className = 'location-verification-badge';
+      badge.innerHTML = '';
+      return;
+    }
+
+    if (type === 'verified' && customerLocation) {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${customerLocation.lat},${customerLocation.lng}`;
+      badge.className = 'location-verification-badge verified';
+      badge.innerHTML = `
+        <i class="fa-solid fa-circle-check" style="color: #059669; font-size: 1.1rem;"></i>
+        <div>
+          <strong>Google Maps सत्यापित लोकेशन</strong>: ${escapeHtml(customerLocation.formattedAddress || addressText || '')}
+          <div style="font-size: 0.78rem; color: #047857;">(${customerLocation.lat.toFixed(5)}, ${customerLocation.lng.toFixed(5)})</div>
+        </div>
+        <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="location-badge-link">
+          मैप देखें <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        </a>
+      `;
+    } else if (type === 'manual') {
+      badge.className = 'location-verification-badge manual';
+      badge.innerHTML = `
+        <i class="fa-solid fa-location-pen" style="color: #64748b; font-size: 1rem;"></i>
+        <div>
+          <strong>मैन्युअल पता दर्ज:</strong> Google Maps सत्यापन लंबित (सटीक दूरी के लिए सुझाव में से चुनें)।
+        </div>
+      `;
+    } else if (type === 'warning') {
+      badge.className = 'location-verification-badge warning';
+      badge.innerHTML = `
+        <i class="fa-solid fa-triangle-exclamation" style="color: #d97706; font-size: 1rem;"></i>
+        <div>${addressText || 'लोकेशन सुझाव त्रुटि'}</div>
+      `;
+    }
   }
 
   function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -469,23 +636,20 @@
   // =========================================================================
   /**
    * Rule A - 1 KM तक FREE Delivery:
-   *   distance <= 1.0 km AND cartTotal >= 150
-   *   charge = 0 ("आपकी डिलीवरी बिल्कुल FREE है!")
+   *   distance <= 1.0 km AND cartTotal >= 150 -> charge = 0 ("FREE (₹0)")
    *
    * Rule B - 1 KM तक ₹150 से कम ऑर्डर:
-   *   distance <= 1.0 km AND cartTotal < 150
-   *   charge = 50 ("₹150 से कम के ऑर्डर पर 1 KM तक ₹50 delivery charge लागू होगा।")
+   *   distance <= 1.0 km AND cartTotal < 150 -> charge = 50 ("₹50")
    *
    * Rule C - 1 KM से अधिक दूरी:
-   *   distance > 1.0 km (regardless of cart total)
-   *   charge = 50 ("1 KM से अधिक दूरी पर ₹50 delivery charge लागू होगा।")
+   *   distance > 1.0 km -> charge = 50 ("₹50")
    */
   function calculateDelivery(distanceKm, cartTotal) {
     if (distanceKm === null || isNaN(distanceKm) || distanceKm <= 0) {
       return {
         status: 'UNKNOWN',
         chargeAmount: null,
-        displayText: 'दूरी अज्ञात (पता चुनें)',
+        displayText: 'दूरी अनुसार दुकान से पुष्टि',
         badgeClass: 'unknown',
         message: 'सड़क मार्ग दूरी की गणना हेतु कृपया डिलीवरी पता चुनें या मैप पर पिन करें।'
       };
@@ -515,7 +679,7 @@
         chargeAmount: 50,
         displayText: '₹50',
         badgeClass: 'paid',
-        message: '🚚 ₹50 Home Delivery Charge लागू होगा। (1 KM से अधिक सड़क दूरी, ऑर्डर मूल्य चाहे जो हो)'
+        message: '🚚 ₹50 Home Delivery Charge लागू होगा। (1 KM से अधिक सड़क दूरी)'
       };
     }
   }
@@ -535,8 +699,20 @@
     const cartTotal = medicines.reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0);
     const itemCount = medicines.length;
 
-    if (itemCountEl) itemCountEl.textContent = `${itemCount} आइटम (Items)`;
-    if (subtotalEl) subtotalEl.textContent = `₹${cartTotal.toFixed(0)}`;
+    // Item count & subtotal formatting
+    if (itemCountEl) {
+      itemCountEl.textContent = itemCount > 0 
+        ? `${itemCount} आइटम (Items)` 
+        : '0 आइटम (पर्चे या WhatsApp अनुसार)';
+    }
+
+    if (subtotalEl) {
+      if (itemCount > 0) {
+        subtotalEl.textContent = `₹${cartTotal.toFixed(0)}`;
+      } else {
+        subtotalEl.textContent = 'WhatsApp पर पुष्टि अनुसार';
+      }
+    }
 
     if (distanceEl) {
       if (calculatedDistanceKm !== null) {
@@ -563,19 +739,26 @@
 
     // Final Payable Total
     if (totalEstimateEl) {
-      if (deliveryResult.chargeAmount !== null) {
-        const grandTotal = cartTotal + deliveryResult.chargeAmount;
-        totalEstimateEl.textContent = `₹${grandTotal.toFixed(0)}`;
-      } else if (deliveryResult.status === 'CONFIRM') {
-        totalEstimateEl.textContent = `₹${cartTotal.toFixed(0)} + डिलीवरी चार्ज (पुष्टि अनुसार)`;
+      if (itemCount === 0) {
+        // Empty cart: do not present misleading 0 or fabricated total
+        if (deliveryResult.chargeAmount !== null) {
+          totalEstimateEl.textContent = `₹${deliveryResult.chargeAmount} (डिलीवरी) + दवाइयों का मूल्य`;
+        } else {
+          totalEstimateEl.textContent = 'दवाइयों एवं दूरी अनुसार WhatsApp पर कन्फर्म';
+        }
       } else {
-        totalEstimateEl.textContent = `₹${cartTotal.toFixed(0)} + डिलीवरी चार्ज`;
+        if (deliveryResult.chargeAmount !== null) {
+          const grandTotal = cartTotal + deliveryResult.chargeAmount;
+          totalEstimateEl.textContent = `₹${grandTotal.toFixed(0)}`;
+        } else {
+          totalEstimateEl.textContent = `₹${cartTotal.toFixed(0)} + डिलीवरी चार्ज`;
+        }
       }
     }
   }
 
   // =========================================================================
-  // 10. WHATSAPP ORDER SUBMISSION
+  // 10. WHATSAPP ORDER SUBMISSION (Strict Format & Real Data)
   // =========================================================================
   function initOrderSubmission() {
     const submitBtn = document.getElementById('submitOrderBtn');
@@ -594,13 +777,14 @@
       const address = addressInput ? addressInput.value.trim() : '';
       const notes = notesInput ? notesInput.value.trim() : '';
 
-      // Validation
+      // Required validation: Name
       if (!name) {
         alert('कृपया अपना नाम दर्ज करें। (Please enter your name)');
         if (nameInput) nameInput.focus();
         return;
       }
 
+      // Required validation: Phone Number (10 digits)
       const phoneRegex = /^[0-9+\s-]{10,14}$/;
       if (!phone || !phoneRegex.test(phone.replace(/\s+/g, ''))) {
         alert('कृपया एक सही 10 अंकों का मोबाइल नंबर दर्ज करें। (Please enter valid 10-digit phone number)');
@@ -608,70 +792,91 @@
         return;
       }
 
-      if (medicines.length === 0 && !prescriptionFileName && !notes) {
-        alert('कृपया कम से कम एक दवाई का नाम जोड़ें या डॉक्टर का पर्चा अपलोड करें। (Please add at least one medicine or prescription)');
-        return;
-      }
-
+      // Required validation: Address
       if (!address) {
-        alert('कृपया डिलीवरी पता दर्ज करें। (Please enter delivery address)');
+        alert('कृपया डिलीवरी का पता दर्ज करें। (Please enter delivery address)');
         if (addressInput) addressInput.focus();
         return;
       }
+
+      // Prescription is completely optional. Medicines selection is optional (can share via WhatsApp).
 
       // Calculate totals
       const cartTotal = medicines.reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0);
       const deliveryResult = calculateDelivery(calculatedDistanceKm, cartTotal);
 
-      // Build structured, professional WhatsApp Message
-      let waMessage = `*नमस्ते Drx. प्रशांत कुमार कुशवाहा जी (माँ दुर्गावती मेडिकल एंड क्लिनिक)*,\n\n`;
-      waMessage += `मुझे होम डिलीवरी के लिए दवाई ऑर्डर करनी है:\n\n`;
-      waMessage += `👤 *ग्राहक का नाम:* ${name}\n`;
-      waMessage += `📱 *मोबाइल नंबर:* ${phone}\n`;
-      waMessage += `📍 *डिलीवरी पता:* ${address}\n`;
-
-      if (calculatedDistanceKm !== null) {
-        waMessage += `🗺️ *दुकान से सड़क मार्ग दूरी:* ${calculatedDistanceKm.toFixed(1)} km\n`;
+      // Determine Google Maps Location Link
+      let mapsLocationLine = '';
+      if (isGoogleVerifiedLocation && customerLocation && customerLocation.lat && customerLocation.lng) {
+        // Exact real customer coordinates clickable link
+        mapsLocationLine = `https://www.google.com/maps/search/?api=1&query=${customerLocation.lat},${customerLocation.lng}`;
       } else {
-        waMessage += `🗺️ *दुकान से सड़क मार्ग दूरी:* (पते अनुसार दुकान से जांचें)\n`;
+        // Location not verified on Google Maps
+        mapsLocationLine = `(स्थान सत्यापित नहीं - ग्राहक द्वारा मैन्युअल पता दर्ज किया गया)`;
       }
 
-      waMessage += `\n📦 *दवाइयों की सूची (${medicines.length} आइटम):*\n`;
+      // Format distance
+      const distanceDisplay = calculatedDistanceKm !== null 
+        ? `${calculatedDistanceKm.toFixed(1)} km` 
+        : `(दुकान से पते अनुसार जांचें)`;
+
+      // Build structured WhatsApp message exactly per specification
+      let waMessage = `नमस्ते Drx. प्रशांत कुमार कुशवाहा जी\n`;
+      waMessage += `(माँ दुर्गावती मेडिकल एंड क्लिनिक),\n\n`;
+      waMessage += `मुझे होम डिलीवरी के लिए दवाई ऑर्डर करनी है।\n\n`;
+
+      waMessage += `👤 *ग्राहक विवरण*\n`;
+      waMessage += `नाम: ${name}\n`;
+      waMessage += `मोबाइल नंबर: ${phone}\n`;
+      waMessage += `डिलीवरी पता: ${address}\n\n`;
+
+      waMessage += `📍 *डिलीवरी लोकेशन*\n`;
+      waMessage += `दुकान से सड़क मार्ग दूरी: ${distanceDisplay}\n`;
+      waMessage += `Google Maps Location: ${mapsLocationLine}\n\n`;
+
+      waMessage += `💊 *दवाइयों का विवरण*\n`;
       if (medicines.length > 0) {
         medicines.forEach((med, i) => {
-          waMessage += `${i + 1}. *${med.name}* — मात्रा: ${med.qty} ${med.price > 0 ? `(₹${med.price})` : ''}\n`;
+          waMessage += `${i + 1}. ${med.name} — मात्रा: ${med.qty}${med.price > 0 ? ` (₹${med.price})` : ''}\n`;
         });
       } else {
-        waMessage += `(दवाइयों का विवरण पर्चे / संदेश में संलग्न है)\n`;
+        waMessage += `दवाइयों की सूची अभी साझा नहीं की गई है। मैं दवाइयों का विवरण WhatsApp पर भेजूँगा/भेजूँगी।\n`;
       }
 
       if (notes) {
-        waMessage += `\n📝 *अतिरिक्त नोट / निर्देश:* ${notes}\n`;
+        waMessage += `\n📝 *ग्राहक नोट:* ${notes}\n`;
       }
 
+      waMessage += `\n🩺 *डॉक्टर का पर्चा*\n`;
       if (prescriptionFileName) {
-        waMessage += `\n📄 *डॉक्टर का पर्चा:* ${prescriptionFileName} (WhatsApp पर फोटो भेज रहा हूँ)\n`;
-      }
-
-      waMessage += `\n💰 *ऑर्डर बिल सारांश:*\n`;
-      waMessage += `• दवाइयों का कुल मूल्य: ₹${cartTotal.toFixed(0)}\n`;
-      waMessage += `• डिलीवरी चार्ज: *${deliveryResult.displayText}*\n`;
-
-      if (deliveryResult.chargeAmount !== null) {
-        const grandTotal = cartTotal + deliveryResult.chargeAmount;
-        waMessage += `• *कुल अनुमानित राशि:* ₹${grandTotal.toFixed(0)}\n`;
+        waMessage += `अपलोड किया गया: ${prescriptionFileName} (फोटो WhatsApp पर भेज रहा हूँ)\n\n`;
       } else {
-        waMessage += `• *कुल अनुमानित राशि:* ₹${cartTotal.toFixed(0)} + डिलीवरी चार्ज\n`;
+        waMessage += `पर्चा वैकल्पिक है। आवश्यकता होने पर WhatsApp पर भेज सकता/सकती हूँ।\n\n`;
       }
 
-      waMessage += `\n🛵 *पर्सनल होम डिलीवरी:* Maa Durgawati Medical की टीम आपके ऑर्डर पर दवाइयाँ सीधे आपके घर तक पहुँचाती है।\n`;
-      waMessage += `कृपया दवाइयों की उपलब्धता एवं डिलीवरी समय कन्फर्म करें। धन्यवाद!`;
+      waMessage += `💰 *ऑर्डर सारांश*\n`;
+      if (medicines.length > 0) {
+        waMessage += `दवाइयों का कुल मूल्य: ₹${cartTotal.toFixed(0)}\n`;
+        waMessage += `डिलीवरी चार्ज: ${deliveryResult.displayText}\n`;
+        if (deliveryResult.chargeAmount !== null) {
+          const grandTotal = cartTotal + deliveryResult.chargeAmount;
+          waMessage += `कुल अनुमानित राशि: ₹${grandTotal.toFixed(0)}\n\n`;
+        } else {
+          waMessage += `कुल अनुमानित राशि: ₹${cartTotal.toFixed(0)} + डिलीवरी चार्ज (पुष्टि अनुसार)\n\n`;
+        }
+      } else {
+        waMessage += `दवाइयों का कुल मूल्य: WhatsApp पर पुष्टि अनुसार\n`;
+        waMessage += `डिलीवरी चार्ज: ${deliveryResult.displayText}\n`;
+        waMessage += `कुल अनुमानित राशि: दवाइयों के मूल्य अनुसार WhatsApp पर कन्फर्म होगी\n\n`;
+      }
+
+      waMessage += `कृपया दवाइयों की उपलब्धता एवं डिलीवरी समय कन्फर्म करें।\n\n`;
+      waMessage += `धन्यवाद!`;
 
       // Redirect to WhatsApp safely
       const encoded = encodeURIComponent(waMessage);
       const waUrl = `https://wa.me/${SHOP_CONFIG.phone}?text=${encoded}`;
 
-      // Open WhatsApp in new tab
       window.open(waUrl, '_blank');
     });
   }
