@@ -258,21 +258,31 @@
       });
     }
 
-    // Check if Google Maps is already loaded
-    if (window.google && window.google.maps && window.google.maps.places) {
+    // Check if a valid Google Maps API Key is configured
+    const apiKey = window.GOOGLE_MAPS_API_KEY || (typeof localStorage !== 'undefined' ? localStorage.getItem('GOOGLE_MAPS_API_KEY') : '') || '';
+
+    // ALWAYS initialize the verified local address suggestion engine
+    setupLocalAddressSuggestions();
+
+    // ONLY initialize Google Places Autocomplete if a valid API Key is actually provided
+    if (apiKey && apiKey.trim().length > 5) {
+      if (window.google && window.google.maps && window.google.maps.places) {
+        onGoogleMapsLoaded();
+      } else {
+        loadGoogleMapsScript(apiKey.trim());
+      }
+    }
+  }
+
+  function loadGoogleMapsScript(key) {
+    if (!key) return;
+
+    if (window.google && window.google.maps) {
       onGoogleMapsLoaded();
       return;
     }
 
-    // Try loading Google Maps JS API script with key if available
-    const apiKey = window.GOOGLE_MAPS_API_KEY || (typeof localStorage !== 'undefined' ? localStorage.getItem('GOOGLE_MAPS_API_KEY') : '') || '';
-
-    loadGoogleMapsScript(apiKey);
-  }
-
-  function loadGoogleMapsScript(key) {
-    if (window.google && window.google.maps) {
-      onGoogleMapsLoaded();
+    if (document.getElementById('googleMapsApiScript')) {
       return;
     }
 
@@ -281,90 +291,35 @@
     };
 
     window.gm_authFailure = () => {
-      console.warn('Google Maps Authentication Failed: API Key or Billing Restriction.');
-      updateLocationVerificationBadge('warning', 'Google Maps API प्रमाणीकरण त्रुटि (API Key / Billing आवश्यक)');
-      setupLocalAddressSuggestions();
+      console.warn('Google Maps Authentication Notice: Key restriction or billing unconfigured.');
     };
 
     const script = document.createElement('script');
-    const keyParam = key ? `key=${encodeURIComponent(key)}&` : '';
-    script.src = `https://maps.googleapis.com/maps/api/js?${keyParam}libraries=places,geometry&callback=onGoogleMapsOrderLoaded`;
+    script.id = 'googleMapsApiScript';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places,geometry&callback=onGoogleMapsOrderLoaded`;
     script.async = true;
     script.defer = true;
     script.onerror = () => {
-      console.warn('Google Maps script network load blocked. Initializing local address suggestion system.');
-      setupLocalAddressSuggestions();
+      console.warn('Google Maps script network load blocked.');
     };
 
     document.head.appendChild(script);
   }
 
   function onGoogleMapsLoaded() {
-    const mapElement = document.getElementById('orderInteractiveMap');
     const addressInput = document.getElementById('deliveryAddress');
 
     if (!window.google || !window.google.maps) {
-      setupLocalAddressSuggestions();
       return;
     }
 
-    const shopLatLng = new google.maps.LatLng(SHOP_CONFIG.lat, SHOP_CONFIG.lng);
-
-    if (mapElement) {
-      try {
-        googleMap = new google.maps.Map(mapElement, {
-          center: shopLatLng,
-          zoom: 15,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: true
-        });
-
-        // Shop Marker
-        shopMarker = new google.maps.Marker({
-          position: shopLatLng,
-          map: googleMap,
-          title: SHOP_CONFIG.name,
-          icon: {
-            url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
-          }
-        });
-
-        const shopInfo = new google.maps.InfoWindow({
-          content: `<strong>${SHOP_CONFIG.name}</strong><br>${SHOP_CONFIG.address}`
-        });
-        shopMarker.addListener('click', () => shopInfo.open(googleMap, shopMarker));
-
-        // Directions Service for driving route
+    // Setup background DirectionsService if available
+    try {
+      if (window.google.maps.DirectionsService) {
         directionsService = new google.maps.DirectionsService();
-        directionsRenderer = new google.maps.DirectionsRenderer({
-          map: googleMap,
-          suppressMarkers: true,
-          polylineOptions: {
-            strokeColor: '#059669',
-            strokeWeight: 5,
-            strokeOpacity: 0.8
-          }
-        });
-
-        // Map Click Listener to pick customer location
-        googleMap.addListener('click', (e) => {
-          const clickedLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-          const geocoder = new google.maps.Geocoder();
-          geocoder.geocode({ location: clickedLoc }, (results, status) => {
-            let addr = `चयनित मैप पिन (${clickedLoc.lat.toFixed(4)}, ${clickedLoc.lng.toFixed(4)})`;
-            let placeId = 'map-click';
-            if (status === 'OK' && results && results[0]) {
-              addr = results[0].formatted_address;
-              placeId = results[0].place_id;
-            }
-            if (addressInput) addressInput.value = addr;
-            setCustomerLocation({ lat: clickedLoc.lat, lng: clickedLoc.lng, placeId, formattedAddress: addr }, addr, true);
-          });
-        });
-      } catch (err) {
-        console.warn('Google Map render notice:', err);
       }
+    } catch (err) {
+      console.warn('DirectionsService notice:', err);
     }
 
     // Initialize Google Places Autocomplete on the address field
@@ -386,7 +341,7 @@
             const loc = {
               lat: place.geometry.location.lat(),
               lng: place.geometry.location.lng(),
-              placeId: place.place_id || '',
+              placeId: place.place_id || 'places-verified',
               formattedAddress: place.formatted_address || place.name || addressInput.value.trim()
             };
             addressInput.value = loc.formattedAddress;
@@ -405,14 +360,11 @@
         });
       } catch (err) {
         console.warn('Google Places Autocomplete initialization warning:', err);
-        setupLocalAddressSuggestions();
       }
-    } else {
-      setupLocalAddressSuggestions();
     }
   }
 
-  // Fallback and Local Address Suggestion Engine (ensures suggestions appear even without API key)
+  // Local Address Suggestion Engine (ensures instant suggestions for Mehnajpur & Azamgarh region)
   function setupLocalAddressSuggestions() {
     const addressInput = document.getElementById('deliveryAddress');
     if (!addressInput) return;
@@ -428,43 +380,49 @@
       dropdown.style.width = '100%';
       dropdown.style.maxHeight = '260px';
       dropdown.style.overflowY = 'auto';
+      dropdown.style.zIndex = '99999';
+      dropdown.style.background = '#ffffff';
+      dropdown.style.border = '1px solid #cbd5e1';
+      dropdown.style.borderRadius = '8px';
+      dropdown.style.boxShadow = '0 10px 25px -5px rgba(0, 0, 0, 0.15)';
       addressInput.parentNode.style.position = 'relative';
       addressInput.parentNode.appendChild(dropdown);
     }
 
-    // Verified local points around Mehnajpur & Azamgarh district
+    // Comprehensive verified local points around Mehnajpur & Azamgarh district
     const LOCAL_DATABASE = [
-      { name: 'इटैली मोड़, मेहनाजपुर (Itaily Mod)', lat: 25.6875, lng: 83.0948, distance: 0.4 },
-      { name: 'मेहनाजपुर मुख्य बाजार (Mehnajpur Main Market)', lat: 25.6840, lng: 83.0910, distance: 0.8 },
-      { name: 'मौधा रोड चौराहा, मेहनाजपुर (Maudha Road)', lat: 25.6980, lng: 83.0990, distance: 1.4 },
-      { name: 'तरवां मोड़, आजमगढ़ रोड (Tarwa Mod)', lat: 25.7150, lng: 83.0850, distance: 3.5 },
-      { name: 'खरिहानी बाजार (Kharihani)', lat: 25.7420, lng: 83.1250, distance: 6.5 },
-      { name: 'लालमऊ ग्राम, मेहनाजपुर (Lalmau)', lat: 25.6810, lng: 83.1020, distance: 1.2 },
-      { name: 'बहाउद्दीनपुर (Bahauddinpur)', lat: 25.6790, lng: 83.0880, distance: 1.1 },
-      { name: 'बेलांव चौराहा (Belao)', lat: 25.7020, lng: 83.0760, distance: 2.8 },
-      { name: 'रानीपुर रोड, मेहनाजपुर (Ranipur Road)', lat: 25.6720, lng: 83.1120, distance: 2.5 },
-      { name: 'देवगाँव (Deogaon, Lalganj)', lat: 25.6510, lng: 82.9850, distance: 11.5 },
-      { name: 'लालगंज कस्बा (Lalganj Azamgarh)', lat: 25.6720, lng: 82.9550, distance: 14.0 },
-      { name: 'आजमगढ़ मुख्यालय (Azamgarh City)', lat: 26.0680, lng: 83.1840, distance: 42.0 }
+      { name: 'इटैली मोड़, मौधा रोड, मेहनाजपुर (Itaily Mod)', query: 'itaily mod iteli mehnajpur maudha road', lat: 25.6871785, lng: 83.0952048, distance: 0.1 },
+      { name: 'मेहनाजपुर मुख्य बाजार चौराहा (Mehnajpur Main Market)', query: 'mehnajpur main market bazar chauraha', lat: 25.6840, lng: 83.0910, distance: 0.8 },
+      { name: 'मौधा रोड चौराहा, मेहनाजपुर (Maudha Road)', query: 'maudha road mehnajpur', lat: 25.6980, lng: 83.0990, distance: 1.4 },
+      { name: 'तरवां मोड़, आजमगढ़ रोड (Tarwa Mod)', query: 'tarwa mod tarwa azamgarh road', lat: 25.7150, lng: 83.0850, distance: 3.5 },
+      { name: 'लालमऊ ग्राम, मेहनाजपुर (Lalmau)', query: 'lalmau gram village mehnajpur', lat: 25.6810, lng: 83.1020, distance: 1.2 },
+      { name: 'सिंहपुर, मेहनाजपुर (Singhpur)', query: 'singhpur mehnajpur', lat: 25.6890, lng: 83.0820, distance: 1.5 },
+      { name: 'बहाउद्दीनपुर (Bahauddinpur)', query: 'bahauddinpur mehnajpur', lat: 25.6790, lng: 83.0880, distance: 1.1 },
+      { name: 'बेलांव चौराहा (Belao Chauraha)', query: 'belao belanw chauraha', lat: 25.7020, lng: 83.0760, distance: 2.8 },
+      { name: 'रानीपुर रोड, मेहनाजपुर (Ranipur Road)', query: 'ranipur road mehnajpur', lat: 25.6720, lng: 83.1120, distance: 2.5 },
+      { name: 'गौरा ग्राम, मेहनाजपुर (Gaura Village)', query: 'gaura gram mehnajpur', lat: 25.6920, lng: 83.1080, distance: 2.0 },
+      { name: 'खरिहानी बाजार (Kharihani Market)', query: 'kharihani bazar market azamgarh', lat: 25.7420, lng: 83.1250, distance: 6.5 },
+      { name: 'पल्हना बाजार (Palhana Market)', query: 'palhana bazar market azamgarh', lat: 25.7190, lng: 83.0180, distance: 8.5 },
+      { name: 'देवगाँव (Deogaon, Lalganj)', query: 'deogaon devgaon lalganj', lat: 25.6510, lng: 82.9850, distance: 11.5 },
+      { name: 'लालगंज कस्बा (Lalganj Azamgarh)', query: 'lalganj town kasba azamgarh', lat: 25.6720, lng: 82.9550, distance: 14.0 },
+      { name: 'सिधारी, आजमगढ़ (Sidhari Azamgarh)', query: 'sidhari azamgarh city', lat: 26.0590, lng: 83.1950, distance: 40.0 },
+      { name: 'आजमगढ़ मुख्यालय (Azamgarh City Center)', query: 'azamgarh headquarter city center', lat: 26.0680, lng: 83.1840, distance: 42.0 }
     ];
 
     addressInput.addEventListener('input', () => {
-      // If Google Places Autocomplete is active, do not conflict with pac-container
-      if (window.google && window.google.maps && window.google.maps.places && autocompleteInstance) {
-        return;
-      }
-
       const q = addressInput.value.trim().toLowerCase();
       if (q.length < 2) {
         dropdown.style.display = 'none';
         return;
       }
 
-      const matches = LOCAL_DATABASE.filter(item => item.name.toLowerCase().includes(q));
+      const matches = LOCAL_DATABASE.filter(item => 
+        item.name.toLowerCase().includes(q) || (item.query && item.query.toLowerCase().includes(q))
+      );
 
       if (matches.length === 0) {
         dropdown.innerHTML = `
-          <div class="pac-item" style="color: var(--text-muted); cursor: default;">
+          <div class="pac-item" style="color: var(--text-muted); cursor: default; padding: 10px 14px;">
             <i class="fa-solid fa-map-pin pac-icon"></i> "${escapeHtml(q)}" — कोई पूर्व-सत्यापित पिन नहीं मिला (मैन्युअल दर्ज रहेगा)
           </div>
         `;
@@ -476,6 +434,8 @@
       matches.forEach(item => {
         const itemEl = document.createElement('div');
         itemEl.className = 'pac-item';
+        itemEl.style.cursor = 'pointer';
+        itemEl.style.padding = '8px 12px';
         itemEl.innerHTML = `
           <i class="fa-solid fa-location-dot pac-icon" style="color: #059669;"></i>
           <span class="pac-item-query">${escapeHtml(item.name)}</span>
@@ -512,6 +472,13 @@
     isGoogleVerifiedLocation = Boolean(isVerified);
 
     updateLocationVerificationBadge(isVerified ? 'verified' : 'manual', addressName);
+
+    // Update live Google Maps iframe smoothly to the selected location coordinates
+    const mapIframe = document.getElementById('orderMapIframe');
+    if (mapIframe && loc && loc.lat && loc.lng) {
+      const pinLabel = encodeURIComponent(addressName || 'Customer Delivery Point');
+      mapIframe.src = `https://maps.google.com/maps?q=${loc.lat},${loc.lng}+(${pinLabel})&t=&z=16&ie=UTF8&iwloc=B&output=embed`;
+    }
 
     // If Google Maps is loaded, calculate real driving distance via DirectionsService
     if (directionsService && window.google && window.google.maps) {
@@ -570,7 +537,7 @@
     }
     const straightKm = haversineDistance(SHOP_CONFIG.lat, SHOP_CONFIG.lng, loc.lat, loc.lng);
     // Real rural Indian roads have an average route winding factor of ~1.25x over straight line
-    calculatedDistanceKm = parseFloat((straightKm * 1.25).toFixed(1));
+    calculatedDistanceKm = parseFloat(Math.max(0.1, straightKm * 1.25).toFixed(1));
     updateSummaryUI();
   }
 
@@ -645,7 +612,7 @@
    *   distance > 1.0 km -> charge = 50 ("₹50")
    */
   function calculateDelivery(distanceKm, cartTotal) {
-    if (distanceKm === null || isNaN(distanceKm) || distanceKm <= 0) {
+    if (distanceKm === null || isNaN(distanceKm) || distanceKm < 0) {
       return {
         status: 'UNKNOWN',
         chargeAmount: null,

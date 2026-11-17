@@ -2876,6 +2876,10 @@ textarea.form-control {
 }
 
 /* Google Places Autocomplete dropdown z-index & styling fix */
+.gm-err-container, .gm-err-content, .gm-style-moc {
+  display: none !important;
+}
+
 .pac-container {
   z-index: 999999 !important;
   border-radius: var(--radius-sm);
